@@ -18,6 +18,8 @@
       margin: 20px auto;
       display: block;
       background: #ffffff;
+      /* 讓畫布可以響應點擊事件 */
+      touch-action: none;
     }
     #canvasLabel {
       margin-top: -10px;
@@ -55,6 +57,16 @@
       border: 1px solid #81c784;
       padding: 6px 10px;
     }
+    /* 新增反向模式的樣式 */
+    .selected-cell {
+        background-color: #ffeb3b !important; /* 黃色，比綠色更明顯的選擇效果 */
+    }
+    .correct-cell {
+        background-color: #4caf50 !important; /* 綠色 */
+    }
+    .wrong-cell {
+        background-color: #f44336 !important; /* 紅色 */
+    }
   </style>
 
 </head>
@@ -65,6 +77,10 @@
     <select id="difficulty">
       <option value="easy">四邊形模式</option>
       <option value="hard">混合模式（含非四邊形）</option>
+    </select>
+    <select id="gameMode">
+      <option value="quiz">問答模式（預設）</option>
+      <option value="reverse">點擊模式（教學用）</option>
     </select>
     <button onclick="startSession()">開始遊戲</button>
     <button onclick="fetchLeaderboard()">查看排行榜</button>
@@ -79,6 +95,13 @@
     <input type="number" id="answer" placeholder="輸入你的答案">
     <button onclick="submitAnswer()">提交答案</button>
   </div>
+
+  <div id="reverseModeControls" style="display:none;">
+    <button onclick="checkReverseAnswer()">確認選擇</button>
+    <button onclick="resetReverseSelection()">重新選擇</button>
+    <button onclick="nextReverseQuestion()">下一題</button>
+  </div>
+
 
   <div id="leaderboard" style="display:none;">
     <h2>排行榜</h2>
@@ -98,8 +121,7 @@
       storageBucket: "areaperimetergame.firebasestorage.app",
       messagingSenderId: "417112904173",
       appId: "1:417112904173:web:62b7de7527beece9a617e4",
-      // *** 確保 databaseURL 是正確的區域 URL ***
-      databaseURL: "https://areaperimetergame-default-rtdb.firebaseio.com" 
+      databaseURL: "https://areaperimetergame-default-rtdb.firebaseio.com" // 已根據您的Firebase實際設定修改
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
@@ -111,6 +133,20 @@
     let shape = [], score = 0, question = "", correctAnswer = 0;
     let playerName = null, timer = null, timeLeft = 60;
     let difficulty = "easy";
+    let currentGameMode = "quiz"; // 新增遊戲模式變數
+
+    // 反向模式相關變數
+    let selectedCells = new Set(); // 儲存點擊選中的格子
+    let reverseModeTargetValue = 0; // 反向模式的目標值 (面積或周長)
+    let reverseModeQuestionType = ''; // 'area' 或 'perimeter'
+
+    // 1. 輸入答案的地方可以支援按下Enter也能輸入
+    document.getElementById("answer").addEventListener("keypress", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault(); // 阻止預設的 Enter 行為 (如表單提交)
+        submitAnswer();
+      }
+    });
 
     function drawGrid() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -129,62 +165,116 @@
       }
     }
 
-    function drawShape(shape) {
-      ctx.fillStyle = "#66bb6a";
+    function drawShape(shape, fillStyle = "#66bb6a") {
+      ctx.fillStyle = fillStyle;
       shape.forEach(([x, y]) => {
         ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
       });
     }
 
-    function generateShape() {
-      const shape = [];
-      // 調整起始位置，避免圖形超出邊界，並確保有足夠的空間繪製不同大小的圖形
-      const maxStartX = gridSize - 5; // 確保圖形至少有5格寬的空間
-      const maxStartY = gridSize - 5; // 確保圖形至少有5格高的空間
-      const startX = Math.floor(Math.random() * maxStartX);
-      const startY = Math.floor(Math.random() * maxStartY);
+    // 輔助函數：將 [x,y] 轉換為字符串鍵
+    function cellToKey(x, y) {
+        return `${x},${y}`;
+    }
 
-      const basicRect = () => {
-        const width = Math.floor(Math.random() * 4) + 2; // 2到5格寬
-        const height = Math.floor(Math.random() * 4) + 2; // 2到5格高
-        const rect = [];
-        for (let y = 0; y < height; y++) {
-          for (let x = 0; x < width; x++) {
-            // 檢查是否超出畫布邊界
-            if (startX + x < gridSize && startY + y < gridSize) {
-               rect.push([startX + x, startY + y]);
+    // 輔助函數：將字符串鍵轉換為 [x,y] 陣列
+    function keyToCell(key) {
+        return key.split(',').map(Number);
+    }
+
+    // 點擊事件監聽器，用於反向模式
+    canvas.addEventListener('click', function(event) {
+        if (currentGameMode !== 'reverse') return; // 只在反向模式下啟用
+
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+        const cellX = Math.floor(x / cellSize);
+        const cellY = Math.floor(y / cellSize);
+
+        // 確保點擊在畫布範圍內
+        if (cellX >= 0 && cellX < gridSize && cellY >= 0 && cellY < gridSize) {
+            const cellKey = cellToKey(cellX, cellY);
+            if (selectedCells.has(cellKey)) {
+                selectedCells.delete(cellKey); // 如果已選中，則取消選中
+            } else {
+                selectedCells.add(cellKey); // 如果未選中，則選中
             }
-          }
+            redrawReverseCanvas(); // 重新繪製畫布以顯示選擇
         }
-        return rect;
-      };
+    });
 
-      if (difficulty === "easy") {
-        return basicRect();
-      } else {
-        // 混合模式的複雜圖形，確保它們不會過大導致超出畫布
-        const shapes = [
-          [[0,0],[1,0],[2,0],[1,1]], // T型
-          [[0,0],[1,0],[0,1],[1,1],[2,1]], // L型擴展
-          [[0,0],[1,0],[1,1],[2,1]], // Z型
-          [[0,1],[1,0],[1,1],[1,2],[2,1]], // 十字型
-          [[0,0],[1,0],[2,0],[3,0],[3,1]], // 長條帶鉤
-          "basic" // 也可以生成基本矩形
-        ];
-        const choice = shapes[Math.floor(Math.random() * shapes.length)];
-        let generatedShape;
-        if (choice === "basic") {
-          generatedShape = basicRect();
-        } else {
-          // 對於預定義的複雜圖形，也需要檢查是否超出邊界
-          generatedShape = choice.map(([x, y]) => [x + startX, y + startY]).filter(([x,y]) => x < gridSize && y < gridSize);
-        }
-        // 如果生成的圖形為空（例如，起始位置太靠近邊緣導致所有格子都被過濾掉），則重新生成一個基本矩形
-        if (generatedShape.length === 0) {
+    function redrawReverseCanvas() {
+        drawGrid(); // 先繪製網格
+        // 繪製選中的格子
+        selectedCells.forEach(key => {
+            const [x, y] = keyToCell(key);
+            ctx.fillStyle = "#ffeb3b"; // 黃色表示選中
+            ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        });
+    }
+
+    // 3. 圖形大小與隨機性優化
+    function generateShape() {
+        const shape = [];
+        let minWidth = 2, maxWidth = 7; // 擴大矩形尺寸範圍
+        let minHeight = 2, maxHeight = 7;
+
+        // 計算最大起始位置，確保圖形不會超出邊界
+        const safeMaxStartX = gridSize - maxWidth;
+        const safeMaxStartY = gridSize - maxHeight;
+        const startX = Math.floor(Math.random() * (safeMaxStartX > 0 ? safeMaxStartX : 1));
+        const startY = Math.floor(Math.random() * (safeMaxStartY > 0 ? safeMaxStartY : 1));
+
+        const basicRect = () => {
+            const width = Math.floor(Math.random() * (maxWidth - minWidth + 1)) + minWidth;
+            const height = Math.floor(Math.random() * (maxHeight - minHeight + 1)) + minHeight;
+            const rect = [];
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    // 確保不超出畫布邊界
+                    if (startX + x < gridSize && startY + y < gridSize) {
+                        rect.push([startX + x, startY + y]);
+                    }
+                }
+            }
+            return rect;
+        };
+
+        if (difficulty === "easy") {
             return basicRect();
+        } else {
+            // 混合模式的複雜圖形，擴大尺寸並確保不會過大
+            // 這些形狀的坐標是相對坐標，會根據 startX, startY 位移
+            const complexShapesTemplates = [
+                // 增加更多樣化的圖形，注意控制最大尺寸
+                [[0,0],[1,0],[2,0],[1,1]], // T型
+                [[0,0],[1,0],[0,1],[1,1],[2,1],[1,2]], // L型擴展版
+                [[0,0],[1,0],[1,1],[2,1],[2,2]], // Z型擴展版
+                [[0,1],[1,0],[1,1],[1,2],[2,1]], // 十字型
+                [[0,0],[1,0],[2,0],[3,0],[3,1],[2,1]], // 長條帶鉤
+                [[0,0],[0,1],[0,2],[1,2],[2,2],[2,1]], // C型
+                [[0,0],[1,0],[2,0],[0,1],[1,1],[2,1],[0,2],[1,2],[2,2]], // 3x3 方塊
+                [[0,0],[1,0],[2,0],[3,0],[0,1],[3,1],[0,2],[3,2],[0,3],[1,3],[2,3],[3,3]], // 中空矩形
+                "basic" // 仍然包含基本矩形
+            ];
+
+            const choice = complexShapesTemplates[Math.floor(Math.random() * complexShapesTemplates.length)];
+            let generatedShape;
+
+            if (choice === "basic") {
+                generatedShape = basicRect();
+            } else {
+                generatedShape = choice.map(([x, y]) => [x + startX, y + startY]).filter(([x,y]) => x < gridSize && y < gridSize);
+            }
+            
+            // 如果生成的圖形為空（例如，起始位置太靠近邊緣導致所有格子都被過濾掉），則重新生成一個基本矩形
+            if (generatedShape.length === 0) {
+                return basicRect();
+            }
+            return generatedShape;
         }
-        return generatedShape;
-      }
     }
 
 
@@ -194,12 +284,12 @@
 
     function calculatePerimeter(shape) {
       const map = {};
-      shape.forEach(([x, y]) => map[`<span class="math-inline">\{x\},</span>{y}`] = true);
+      shape.forEach(([x, y]) => map[cellToKey(x, y)] = true); // 使用輔助函數
       let perimeter = 0;
       const dirs = [[1,0], [-1,0], [0,1], [0,-1]];
       shape.forEach(([x, y]) => {
         dirs.forEach(([dx, dy]) => {
-          if (!map[`<span class="math-inline">\{x\+dx\},</span>{y+dy}`]) perimeter++;
+          if (!map[cellToKey(x + dx, y + dy)]) perimeter++; // 使用輔助函數
         });
       });
       return perimeter;
@@ -208,23 +298,35 @@
     function startSession() {
       playerName = document.getElementById("playerName").value.trim();
       difficulty = document.getElementById("difficulty").value;
+      currentGameMode = document.getElementById("gameMode").value; // 取得遊戲模式
+      
       if (!playerName) {
         alert("請輸入暱稱");
         return;
       }
+      
       score = 0;
       timeLeft = 60;
-      document.getElementById("leaderboard").style.display = "none"; // 遊戲開始時隱藏排行榜
-      startTimer();
-      nextQuestion();
-      document.getElementById("answerBlock").style.display = "block"; // 確保遊戲開始時答案輸入框可見
+      clearInterval(timer); // 清除任何舊的計時器
+      document.getElementById("leaderboard").style.display = "none";
+      document.getElementById("question").textContent = ""; // 清空問題
+      document.getElementById("answer").value = ""; // 清空答案輸入框
+
+      if (currentGameMode === "quiz") {
+        document.getElementById("answerBlock").style.display = "block";
+        document.getElementById("reverseModeControls").style.display = "none";
+        startTimer();
+        nextQuestion();
+      } else { // reverse mode
+        document.getElementById("answerBlock").style.display = "none";
+        document.getElementById("reverseModeControls").style.display = "block";
+        // 反向模式不需要計時和排名，用於教學
+        document.getElementById("timer").textContent = ""; 
+        nextReverseQuestion();
+      }
     }
 
     function startTimer() {
-      // 清除可能存在的舊計時器
-      if (timer) {
-        clearInterval(timer);
-      }
       document.getElementById("timer").textContent = `剩餘時間：${timeLeft} 秒`;
       timer = setInterval(() => {
         timeLeft--;
@@ -253,7 +355,6 @@
 
     function submitAnswer() {
       const input = document.getElementById("answer").value;
-      // 檢查輸入是否為有效數字
       if (input === "" || isNaN(input)) {
         alert("請輸入一個有效的數字答案。");
         return;
@@ -268,78 +369,142 @@
       nextQuestion();
     }
 
-    function endGame() {
+    async function endGame() { // 修改為異步函數以便等待Firebase操作
       alert(`時間到！你的分數是 ${score} 分。`);
       const record = {
         name: playerName,
         score: score,
         time: Date.now()
       };
-      // 確保分數是數字
-      if (typeof record.score !== 'number') {
-        record.score = Number(record.score) || 0; // 轉換為數字，如果轉換失敗則為0
+      
+      // 2. 同一個暱稱只能有一個最高分數
+      // 從Firebase獲取該玩家的歷史最高分數
+      try {
+        const snapshot = await db.ref("scores/" + playerName).once("value");
+        const existingRecord = snapshot.val();
+        
+        let shouldUpdate = false;
+        if (!existingRecord) {
+          shouldUpdate = true; // 玩家首次記錄分數
+        } else if (record.score > existingRecord.score) {
+          shouldUpdate = true; // 新分數更高
+        }
+
+        if (shouldUpdate) {
+          await db.ref("scores/" + playerName).set(record);
+          console.log("分數已成功儲存/更新為最高分！");
+        } else {
+          console.log("當前分數未超過歷史最高分，不進行更新。");
+        }
+      } catch (error) {
+        console.error("儲存分數時發生錯誤或讀取歷史分數失敗：", error);
+      } finally {
+        fetchLeaderboard(); // 無論是否更新都顯示排行榜
+        document.getElementById("question").textContent = ""; // 隱藏問題和答案區塊
+        document.getElementById("answerBlock").style.display = "none";
       }
-
-      firebase.database().ref("scores/" + playerName).set(record)
-        .then(() => {
-          console.log("分數已成功儲存！");
-          fetchLeaderboard(); // 儲存後立即更新排行榜
-        })
-        .catch(error => {
-          console.error("儲存分數時發生錯誤：", error);
-        });
-
-      // 隱藏問題和答案區塊
-      document.getElementById("question").textContent = "";
-      document.getElementById("answerBlock").style.display = "none";
     }
 
-function fetchLeaderboard() {
-      console.log("嘗試讀取排行榜資料..."); // <-- 這行在您的檔案中沒有
-      // 確保排行榜區塊可見
+    function fetchLeaderboard() {
+      console.log("嘗試讀取排行榜資料...");
       document.getElementById("leaderboard").style.display = "block";
 
       firebase.database().ref("scores").once("value").then(snapshot => {
-        console.log("成功取得資料快照！", snapshot.val()); // <-- 這行在您的檔案中沒有
+        console.log("成功取得資料快照！", snapshot.val());
 
         const table = document.getElementById("rankTable");
-        table.innerHTML = ""; // 清空現有的表格內容
+        table.innerHTML = "";
 
-        const data = snapshot.val() || {}; // 如果沒有資料，確保 data 是一個空物件
-        console.log("處理前的原始資料 (data):", data); // <-- 這行在您的檔案中沒有
+        const data = snapshot.val() || {};
+        console.log("處理前的原始資料 (data):", data);
 
-        // 將物件轉換為陣列，並按照分數降序排序
         const sorted = Object.values(data).sort((a, b) => {
-          // 確保 score 屬性存在且是數字
           const scoreA = typeof a.score === 'number' ? a.score : (Number(a.score) || 0);
           const scoreB = typeof b.score === 'number' ? b.score : (Number(b.score) || 0);
           return scoreB - scoreA;
         });
-        console.log("排序後的資料 (sorted):", sorted); // <-- 這行在您的檔案中沒有
+        console.log("排序後的資料 (sorted):", sorted);
 
-        if (sorted.length === 0) { // <-- 整個 if 判斷在您的檔案中沒有
-          console.log("排行榜沒有資料。"); // <-- 這行在您的檔案中沒有
-          table.innerHTML = "<tr><td colspan='2'>目前沒有排名資料。</td></tr>"; // <-- 這行在您的檔案中沒有
+        if (sorted.length === 0) {
+          console.log("排行榜沒有資料。");
+          table.innerHTML = "<tr><td colspan='2'>目前沒有排名資料。</td></tr>";
         } else {
-          // 迭代排序後的資料並建立表格行
           sorted.forEach((item) => {
-            // 檢查 item 是否為有效物件，並包含 name 和 score 屬性
-            if (item && item.name && typeof item.score === 'number') { // <-- 這行在您的檔案中沒有
+            if (item && item.name && typeof item.score === 'number') {
               const row = `<tr><td>${item.name}</td><td>${item.score}</td></tr>`;
               table.innerHTML += row;
-              console.log(`添加行: 暱稱 ${item.name}, 分數 ${item.score}`); // <-- 這行在您的檔案中沒有
+              console.log(`添加行: 暱稱 ${item.name}, 分數 ${item.score}`);
             } else {
-              console.warn("發現無效的排行榜資料項目，已跳過：", item); // <-- 這行在您的檔案中沒有
+              console.warn("發現無效的排行榜資料項目，已跳過：", item);
             }
           });
         }
-        console.log("排行榜已更新完成。"); // <-- 這行在您的檔案中沒有
+        console.log("排行榜已更新完成。");
 
       }).catch(error => {
-        console.error("讀取排行榜時發生錯誤：", error); // <-- 這行在您的檔案中沒有
+        console.error("讀取排行榜時發生錯誤：", error);
       });
     }
 
+    // 4. 新增反向模式（點擊表格回答）
+    function nextReverseQuestion() {
+        selectedCells.clear(); // 清空選擇
+        drawGrid(); // 重新繪製空白網格
+        
+        reverseModeTargetValue = Math.floor(Math.random() * 10) + 5; // 生成5-14之間的目標值
+        if (Math.random() < 0.5) {
+            reverseModeQuestionType = 'area';
+            document.getElementById("question").textContent = `請點擊格子，組合成面積為 ${reverseModeTargetValue} cm² 的圖形。`;
+        } else {
+            reverseModeQuestionType = 'perimeter';
+            document.getElementById("question").textContent = `請點擊格子，組合成周長為 ${reverseModeTargetValue} cm 的圖形。`;
+        }
+        // 清除上一次的結果高亮
+        canvas.classList.remove('correct-cell', 'wrong-cell');
+    }
+
+    function checkReverseAnswer() {
+        if (selectedCells.size === 0) {
+            alert("請先點擊格子來選擇一個圖形！");
+            return;
+        }
+
+        const currentShape = Array.from(selectedCells).map(keyToCell);
+        let calculatedValue;
+        let isCorrect = false;
+
+        if (reverseModeQuestionType === 'area') {
+            calculatedValue = calculateArea(currentShape);
+            if (calculatedValue === reverseModeTargetValue) {
+                isCorrect = true;
+            }
+        } else { // perimeter
+            calculatedValue = calculatePerimeter(currentShape);
+            if (calculatedValue === reverseModeTargetValue) {
+                isCorrect = true;
+            }
+        }
+
+        drawGrid(); // 重新繪製網格
+        if (isCorrect) {
+            drawShape(currentShape, "#4caf50"); // 綠色高亮正確圖形
+            document.getElementById("question").textContent = `回答正確！ (${reverseModeQuestionType === 'area' ? '面積' : '周長'} ${calculatedValue} ${reverseModeQuestionType === 'area' ? 'cm²' : 'cm'})`;
+            // 可以選擇在這裡自動跳到下一題或者讓用戶手動點擊下一題
+            // setTimeout(nextReverseQuestion, 1500); 
+        } else {
+            drawShape(currentShape, "#f44336"); // 紅色高亮錯誤圖形
+            document.getElementById("question").textContent = `回答錯誤！你選擇的圖形${reverseModeQuestionType === 'area' ? '面積' : '周長'}是 ${calculatedValue} ${reverseModeQuestionType === 'area' ? 'cm²' : 'cm'}。目標是 ${reverseModeTargetValue}。`;
+        }
+    }
+
+    function resetReverseSelection() {
+        selectedCells.clear();
+        redrawReverseCanvas();
+        // 重設問題文字到初始狀態
+        document.getElementById("question").textContent = `請點擊格子，組合成${reverseModeQuestionType === 'area' ? '面積' : '周長'}為 ${reverseModeTargetType} 的圖形。`;
+    }
+
+    // 初始繪製
     drawGrid();
 
   </script>
