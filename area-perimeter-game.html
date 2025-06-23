@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>周長與面積遊戲</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+   <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #e6f4ea;
+      padding: 20px;
+      text-align: center;
+      color: #2e7d32;
+    }
+    #gameCanvas {
+      border: 2px solid #2e7d32;
+      margin: 20px auto;
+      display: block;
+      background: #ffffff;
+    }
+    #canvasLabel {
+      margin-top: -10px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #1b5e20;
+    }
+    #controls {
+      margin: 10px auto;
+    }
+    input, button {
+      padding: 10px;
+      margin: 5px;
+      font-size: 16px;
+      border: 1px solid #2e7d32;
+      border-radius: 5px;
+    }
+    button {
+      background-color: #a5d6a7;
+      color: #1b5e20;
+      cursor: pointer;
+    }
+    #question, #timer {
+      font-size: 20px;
+      margin: 10px;
+    }
+    #leaderboard {
+      margin-top: 30px;
+    }
+    table {
+      margin: 0 auto;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #81c784;
+      padding: 6px 10px;
+    }
+  </style>
+
+</head>
+<body>
+  <h1>周長與面積遊戲</h1>
+  <div id="controls">
+    <input type="text" id="playerName" placeholder="請輸入暱稱">
+    <select id="difficulty">
+      <option value="easy">四邊形模式</option>
+      <option value="hard">混合模式（含非四邊形）</option>
+    </select>
+    <button onclick="startSession()">開始遊戲</button>
+    <button onclick="fetchLeaderboard()">查看排行榜</button>
+  </div>
+
+  <div id="timer"></div>
+  <canvas id="gameCanvas" width="400" height="400"></canvas>
+  <div id="canvasLabel">每格為 1cm × 1cm</div>
+
+  <div id="question"></div>
+  <div id="answerBlock" style="display:none;">
+    <input type="number" id="answer" placeholder="輸入你的答案">
+    <button onclick="submitAnswer()">提交答案</button>
+  </div>
+
+  <div id="leaderboard" style="display:none;">
+    <h2>排行榜</h2>
+    <table>
+      <thead>
+        <tr><th>暱稱</th><th>分數</th></tr>
+      </thead>
+      <tbody id="rankTable"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCeJ3thHakCR2-2dBWPpQQgAs3-hg__8MU",
+      authDomain: "areaperimetergame.firebaseapp.com",
+      projectId: "areaperimetergame",
+      storageBucket: "areaperimetergame.firebasestorage.app",
+      messagingSenderId: "417112904173",
+      appId: "1:417112904173:web:62b7de7527beece9a617e4",
+      // *** 確保 databaseURL 是正確的區域 URL ***
+      databaseURL: "https://areaperimetergame-default-rtdb.asia-southeast1.firebasedatabase.app" 
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const gridSize = 20;
+    const cellSize = 20;
+    let shape = [], score = 0, question = "", correctAnswer = 0;
+    let playerName = null, timer = null, timeLeft = 60;
+    let difficulty = "easy";
+
+    function drawGrid() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "#388e3c";
+      ctx.lineWidth = 2;
+      for (let i = 0; i <= gridSize; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, i * cellSize);
+        ctx.lineTo(gridSize * cellSize, i * cellSize);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(i * cellSize, 0);
+        ctx.lineTo(i * cellSize, gridSize * cellSize);
+        ctx.stroke();
+      }
+    }
+
+    function drawShape(shape) {
+      ctx.fillStyle = "#66bb6a";
+      shape.forEach(([x, y]) => {
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      });
+    }
+
+    function generateShape() {
+      const shape = [];
+      // 調整起始位置，避免圖形超出邊界，並確保有足夠的空間繪製不同大小的圖形
+      const maxStartX = gridSize - 5; // 確保圖形至少有5格寬的空間
+      const maxStartY = gridSize - 5; // 確保圖形至少有5格高的空間
+      const startX = Math.floor(Math.random() * maxStartX);
+      const startY = Math.floor(Math.random() * maxStartY);
+
+      const basicRect = () => {
+        const width = Math.floor(Math.random() * 4) + 2; // 2到5格寬
+        const height = Math.floor(Math.random() * 4) + 2; // 2到5格高
+        const rect = [];
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            // 檢查是否超出畫布邊界
+            if (startX + x < gridSize && startY + y < gridSize) {
+               rect.push([startX + x, startY + y]);
+            }
+          }
+        }
+        return rect;
+      };
+
+      if (difficulty === "easy") {
+        return basicRect();
+      } else {
+        // 混合模式的複雜圖形，確保它們不會過大導致超出畫布
+        const shapes = [
+          [[0,0],[1,0],[2,0],[1,1]], // T型
+          [[0,0],[1,0],[0,1],[1,1],[2,1]], // L型擴展
+          [[0,0],[1,0],[1,1],[2,1]], // Z型
+          [[0,1],[1,0],[1,1],[1,2],[2,1]], // 十字型
+          [[0,0],[1,0],[2,0],[3,0],[3,1]], // 長條帶鉤
+          "basic" // 也可以生成基本矩形
+        ];
+        const choice = shapes[Math.floor(Math.random() * shapes.length)];
+        let generatedShape;
+        if (choice === "basic") {
+          generatedShape = basicRect();
+        } else {
+          // 對於預定義的複雜圖形，也需要檢查是否超出邊界
+          generatedShape = choice.map(([x, y]) => [x + startX, y + startY]).filter(([x,y]) => x < gridSize && y < gridSize);
+        }
+        // 如果生成的圖形為空（例如，起始位置太靠近邊緣導致所有格子都被過濾掉），則重新生成一個基本矩形
+        if (generatedShape.length === 0) {
+            return basicRect();
+        }
+        return generatedShape;
+      }
+    }
+
+
+    function calculateArea(shape) {
+      return shape.length;
+    }
+
+    function calculatePerimeter(shape) {
+      const map = {};
+      shape.forEach(([x, y]) => map[`<span class="math-inline">\{x\},</span>{y}`] = true);
+      let perimeter = 0;
+      const dirs = [[1,0], [-1,0], [0,1], [0,-1]];
+      shape.forEach(([x, y]) => {
+        dirs.forEach(([dx, dy]) => {
+          if (!map[`<span class="math-inline">\{x\+dx\},</span>{y+dy}`]) perimeter++;
+        });
+      });
+      return perimeter;
+    }
+
+    function startSession() {
+      playerName = document.getElementById("playerName").value.trim();
+      difficulty = document.getElementById("difficulty").value;
+      if (!playerName) {
+        alert("請輸入暱稱");
+        return;
+      }
+      score = 0;
+      timeLeft = 60;
+      document.getElementById("leaderboard").style.display = "none"; // 遊戲開始時隱藏排行榜
+      startTimer();
+      nextQuestion();
+      document.getElementById("answerBlock").style.display = "block"; // 確保遊戲開始時答案輸入框可見
+    }
+
+    function startTimer() {
+      // 清除可能存在的舊計時器
+      if (timer) {
+        clearInterval(timer);
+      }
+      document.getElementById("timer").textContent = `剩餘時間：${timeLeft} 秒`;
+      timer = setInterval(() => {
+        timeLeft--;
+        document.getElementById("timer").textContent = `剩餘時間：${timeLeft} 秒`;
+        if (timeLeft <= 0) {
+          clearInterval(timer);
+          endGame();
+        }
+      }, 1000);
+    }
+
+    function nextQuestion() {
+      drawGrid();
+      shape = generateShape();
+      drawShape(shape);
+      if (Math.random() < 0.5) {
+        correctAnswer = calculateArea(shape);
+        question = "請問此圖形的面積為何？";
+      } else {
+        correctAnswer = calculatePerimeter(shape);
+        question = "請問此圖形的周長為何？";
+      }
+      document.getElementById("question").textContent = question;
+      document.getElementById("answer").value = ""; // 清空答案輸入框
+    }
+
+    function submitAnswer() {
+      const input = document.getElementById("answer").value;
+      // 檢查輸入是否為有效數字
+      if (input === "" || isNaN(input)) {
+        alert("請輸入一個有效的數字答案。");
+        return;
+      }
+      if (parseInt(input) === correctAnswer) {
+        score += (difficulty === "hard") ? 15 : 10;
+        console.log(`回答正確！當前分數：${score}`);
+      } else {
+        console.log(`回答錯誤！正確答案是 ${correctAnswer}`);
+      }
+      document.getElementById("answer").value = ""; // 清空輸入框
+      nextQuestion();
+    }
+
+    function endGame() {
+      alert(`時間到！你的分數是 ${score} 分。`);
+      const record = {
+        name: playerName,
+        score: score,
+        time: Date.now()
+      };
+      // 確保分數是數字
+      if (typeof record.score !== 'number') {
+        record.score = Number(record.score) || 0; // 轉換為數字，如果轉換失敗則為0
+      }
+
+      firebase.database().ref("scores/" + playerName).set(record)
+        .then(() => {
+          console.log("分數已成功儲存！");
+          fetchLeaderboard(); // 儲存後立即更新排行榜
+        })
+        .catch(error => {
+          console.error("儲存分數時發生錯誤：", error);
+        });
+
+      // 隱藏問題和答案區塊
+      document.getElementById("question").textContent = "";
+      document.getElementById("answerBlock").style.display = "none";
+    }
+
+    function fetchLeaderboard() {
+      console.log("嘗試讀取排行榜資料...");
+      // 確保排行榜區塊可見
+      document.getElementById("leaderboard").style.display = "block";
+
+      firebase.database().ref("scores").once("value").then(snapshot => {
+        console.log("成功取得資料快照！", snapshot.val()); // 這裡會顯示從Firebase讀到的原始資料
+
+        const table = document.getElementById("rankTable");
+        table.innerHTML = ""; // 清空現有的表格內容
+
+        const data = snapshot.val() || {}; // 如果沒有資料，確保 data 是一個空物件
+        console.log("處理前的原始資料 (data):", data);
+
+        // 將物件轉換為陣列，並按照分數降序排序
+        const sorted = Object.values(data).sort((a, b) => {
+          // 確保 score 屬性存在且是數字
+          const scoreA = typeof a.score === 'number' ? a.score : (Number(a.score) || 0);
+          const scoreB = typeof b.score === 'number' ? b.score : (Number(b.score) || 0);
+          return scoreB - scoreA;
+        });
+        console.log("排序後的資料 (sorted):", sorted);
+
+        if (sorted.length === 0) {
+          console.log("排行榜沒有資料。");
+          table.innerHTML = "<tr><td colspan='2'>目前沒有排名資料。</td></tr>";
+        } else {
+          // 迭代排序後的資料並建立表格行
+          sorted.forEach((item) => {
+            // 檢查 item 是否為有效物件，並包含 name 和 score 屬性
+            if (item && item.name && typeof item.score === 'number') {
+              const row = `<tr><td><span class="math-inline">\{item\.name\}</td\><td\></span>{item.score}</td></tr>`;
+              table.innerHTML += row;
+              console.log(`添加行: 暱稱 ${item.name}, 分數 ${item.score}`);
+            } else {
+              console.warn("發現無效的排行榜資料項目，已跳過：", item);
+            }
+          });
+        }
+        console.log("排行榜已更新完成。");
+
+      }).catch(error => {
+        console.error("讀取排行榜時發生錯誤：", error); // 捕獲任何讀取錯誤
+      });
+    }
+
+    drawGrid();
+
+  </script>
+</body>
+</html>
