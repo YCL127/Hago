@@ -294,19 +294,19 @@
       document.getElementById("answerBlock").style.display = "none";
     }
 
-    function fetchLeaderboard() {
-      console.log("嘗試讀取排行榜資料...");
+function fetchLeaderboard() {
+      console.log("嘗試讀取排行榜資料..."); // <-- 這行在您的檔案中沒有
       // 確保排行榜區塊可見
       document.getElementById("leaderboard").style.display = "block";
 
       firebase.database().ref("scores").once("value").then(snapshot => {
-        console.log("成功取得資料快照！", snapshot.val()); // 這裡會顯示從Firebase讀到的原始資料
+        console.log("成功取得資料快照！", snapshot.val()); // <-- 這行在您的檔案中沒有
 
         const table = document.getElementById("rankTable");
         table.innerHTML = ""; // 清空現有的表格內容
 
         const data = snapshot.val() || {}; // 如果沒有資料，確保 data 是一個空物件
-        console.log("處理前的原始資料 (data):", data);
+        console.log("處理前的原始資料 (data):", data); // <-- 這行在您的檔案中沒有
 
         // 將物件轉換為陣列，並按照分數降序排序
         const sorted = Object.values(data).sort((a, b) => {
@@ -315,28 +315,28 @@
           const scoreB = typeof b.score === 'number' ? b.score : (Number(b.score) || 0);
           return scoreB - scoreA;
         });
-        console.log("排序後的資料 (sorted):", sorted);
+        console.log("排序後的資料 (sorted):", sorted); // <-- 這行在您的檔案中沒有
 
-        if (sorted.length === 0) {
-          console.log("排行榜沒有資料。");
-          table.innerHTML = "<tr><td colspan='2'>目前沒有排名資料。</td></tr>";
+        if (sorted.length === 0) { // <-- 整個 if 判斷在您的檔案中沒有
+          console.log("排行榜沒有資料。"); // <-- 這行在您的檔案中沒有
+          table.innerHTML = "<tr><td colspan='2'>目前沒有排名資料。</td></tr>"; // <-- 這行在您的檔案中沒有
         } else {
           // 迭代排序後的資料並建立表格行
           sorted.forEach((item) => {
             // 檢查 item 是否為有效物件，並包含 name 和 score 屬性
-            if (item && item.name && typeof item.score === 'number') {
-              const row = `<tr><td><span class="math-inline">\{item\.name\}</td\><td\></span>{item.score}</td></tr>`;
+            if (item && item.name && typeof item.score === 'number') { // <-- 這行在您的檔案中沒有
+              const row = `<tr><td>${item.name}</td><td>${item.score}</td></tr>`;
               table.innerHTML += row;
-              console.log(`添加行: 暱稱 ${item.name}, 分數 ${item.score}`);
+              console.log(`添加行: 暱稱 ${item.name}, 分數 ${item.score}`); // <-- 這行在您的檔案中沒有
             } else {
-              console.warn("發現無效的排行榜資料項目，已跳過：", item);
+              console.warn("發現無效的排行榜資料項目，已跳過：", item); // <-- 這行在您的檔案中沒有
             }
           });
         }
-        console.log("排行榜已更新完成。");
+        console.log("排行榜已更新完成。"); // <-- 這行在您的檔案中沒有
 
       }).catch(error => {
-        console.error("讀取排行榜時發生錯誤：", error); // 捕獲任何讀取錯誤
+        console.error("讀取排行榜時發生錯誤：", error); // <-- 這行在您的檔案中沒有
       });
     }
 
