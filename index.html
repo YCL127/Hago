@@ -6,69 +6,201 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
    <style>
+    /* 全局樣式 */
     body {
-      font-family: Arial, sans-serif;
-      background: #e6f4ea;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* 更現代的字體 */
+      background: #e6f4ea; /* 柔和的淺綠色背景 */
       padding: 20px;
       text-align: center;
-      color: #2e7d32;
+      color: #2e7d32; /* 深綠色文字 */
+      line-height: 1.6;
+      margin: 0; /* 移除默認邊距 */
     }
-    #gameCanvas {
-      border: 2px solid #2e7d32;
+
+    h1 {
+      color: #1b5e20; /* 更深的綠色標題 */
+      margin-bottom: 25px;
+      font-size: 2.5em; /* 讓標題更大 */
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    }
+
+    /* 控制區塊樣式 */
+    #controls {
       margin: 20px auto;
+      padding: 20px;
+      background-color: #dcedc8; /* 淺綠色控制區塊背景 */
+      border-radius: 12px; /* 更圓潤的邊角 */
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); /* 更明顯的陰影 */
+      display: flex; /* 使用 flexbox 佈局 */
+      flex-wrap: wrap; /* 當空間不足時換行 */
+      justify-content: center; /* 居中對齊 */
+      align-items: center;
+      gap: 15px; /* 元素間距 */
+      max-width: 800px; /* 控制最大寬度 */
+    }
+
+    /* 輸入框、選擇框和按鈕的基礎樣式 */
+    input[type="text"],
+    input[type="number"],
+    select,
+    button {
+      padding: 12px 20px;
+      font-size: 1.1em; /* 稍微放大字體 */
+      border: 1px solid #aed581; /* 柔和的綠色邊框 */
+      border-radius: 8px; /* 圓角 */
+      margin: 5px 0;
+      box-sizing: border-box; /* 確保 padding 不增加寬度 */
+      transition: all 0.3s ease; /* 添加過渡效果 */
+    }
+
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #689f38; /* 聚焦時更深的綠色邊框 */
+      box-shadow: 0 0 8px rgba(104, 159, 56, 0.4); /* 聚焦時的陰影 */
+    }
+
+    /* 按鈕樣式 */
+    button {
+      background-color: #8bc34a; /* 綠色按鈕 */
+      color: #ffffff; /* 白色文字 */
+      cursor: pointer;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      flex-shrink: 0; /* 防止按鈕縮小 */
+    }
+
+    button:hover {
+      background-color: #689f38; /* 懸停時更深的綠色 */
+      transform: translateY(-2px); /* 輕微上浮效果 */
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    /* 畫布樣式 */
+    #gameCanvas {
+      border: 3px solid #1b5e20; /* 更粗更深的綠色邊框 */
+      margin: 30px auto; /* 增加上下間距 */
       display: block;
       background: #ffffff;
-      /* 讓畫布可以響應點擊事件 */
-      touch-action: none;
+      border-radius: 8px;
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2); /* 更明顯的陰影 */
+      touch-action: none; /* 禁用觸摸瀏覽器行為 */
     }
+
     #canvasLabel {
-      margin-top: -10px;
-      margin-bottom: 20px;
-      font-size: 14px;
-      color: #1b5e20;
+      margin-top: -15px; /* 調整位置，靠近畫布 */
+      margin-bottom: 25px;
+      font-size: 1.1em;
+      color: #33691e; /* 綠色標籤 */
+      font-weight: bold;
     }
-    #controls {
-      margin: 10px auto;
-    }
-    input, button {
-      padding: 10px;
-      margin: 5px;
-      font-size: 16px;
-      border: 1px solid #2e7d32;
-      border-radius: 5px;
-    }
-    button {
-      background-color: #a5d6a7;
-      color: #1b5e20;
-      cursor: pointer;
-    }
+
+    /* 問題和計時器樣式 */
     #question, #timer {
-      font-size: 20px;
-      margin: 10px;
+      font-size: 1.4em;
+      margin: 20px;
+      color: #333;
+      font-weight: bold;
     }
+
+    /* 答案區塊樣式 */
+    #answerBlock {
+        margin: 20px auto;
+        display: flex; /* 使用 flexbox 佈局 */
+        justify-content: center; /* 居中對齊 */
+        align-items: center;
+        gap: 10px; /* 元素間距 */
+    }
+
+    /* 排行榜樣式 */
     #leaderboard {
-      margin-top: 30px;
+      margin-top: 50px; /* 增加與上方元素的距離 */
+      background-color: #f9fbe7; /* 淺黃綠色背景 */
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+      max-width: 600px; /* 控制最大寬度 */
+      margin-left: auto;
+      margin-right: auto;
     }
+
+    #leaderboard h2 {
+      color: #33691e; /* 與標籤一致的綠色 */
+      margin-top: 0;
+      margin-bottom: 20px;
+      font-size: 2em;
+    }
+
     table {
-      margin: 0 auto;
-      border-collapse: collapse;
+      margin: 15px auto;
+      border-collapse: separate; /* 使用分離邊框方便圓角 */
+      border-spacing: 0; /* 移除單元格間距 */
+      width: 100%;
+      border-radius: 8px; /* 圓角表格 */
+      overflow: hidden; /* 隱藏超出圓角的部分 */
     }
+
     th, td {
-      border: 1px solid #81c784;
-      padding: 6px 10px;
+      border: none; /* 移除單元格邊框 */
+      padding: 12px 15px;
+      text-align: center; /* 居中對齊文字 */
     }
-    /* 新增反向模式的樣式 */
+
+    th {
+      background-color: #c5e1a5; /* 淺綠色表頭 */
+      color: #33691e;
+      font-weight: bold;
+      text-transform: uppercase; /* 大寫字母 */
+      letter-spacing: 0.5px;
+    }
+    
+    th:first-child { border-top-left-radius: 8px; }
+    th:last-child { border-top-right-radius: 8px; }
+    
+    tr:nth-child(even) {
+      background-color: #f1f8e9; /* 隔行更淺的綠色 */
+    }
+    tr:nth-child(odd) {
+        background-color: #ffffff; /* 奇數行白色 */
+    }
+
+    /* 反向模式按鈕樣式 */
+    #reverseModeControls {
+        margin: 20px auto;
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+    }
+
+    #reverseModeControls button {
+        background-color: #ffb74d; /* 溫暖的橘色 */
+        color: #fff;
+    }
+
+    #reverseModeControls button:hover {
+        background-color: #fb8c00; /* 懸停時更深的橘色 */
+    }
+
+    /* 反向模式選中和結果格子的樣式 (保持不變) */
+    /* 這裡的顏色定義在 JavaScript 的 drawShape 函數中，所以這裡的 CSS 類是備用或視覺輔助 */
     .selected-cell {
-        background-color: #ffeb3b !important; /* 黃色，比綠色更明顯的選擇效果 */
+        /* background-color: #ffeb3b !important; */
     }
     .correct-cell {
-        background-color: #4caf50 !important; /* 綠色 */
+        /* background-color: #4caf50 !important; */
     }
     .wrong-cell {
-        background-color: #f44336 !important; /* 紅色 */
+        /* background-color: #f44336 !important; */
     }
-  </style>
 
+    /* 確保 canvas 網格線顏色和填充色與新主題搭配 */
+    /* 這部分是在 JavaScript 中的 drawGrid 和 drawShape 函數中定義的， */
+    /* 這裡只是為了提醒您如果需要，也可以在 JS 中調整這些顏色 */
+    /* ctx.strokeStyle = "#9ccc65"; */ /* 淺綠色網格線 */
+    /* ctx.fillStyle = "#aed581";  */ /* 預設填充色 */
+
+</style>
 </head>
 <body>
   <h1>周長與面積遊戲_Hako</h1>
