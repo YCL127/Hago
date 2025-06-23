@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <title>Hako</title>
+  <title>周長與面積遊戲_Hako</title>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
    <style>
@@ -71,7 +71,7 @@
 
 </head>
 <body>
-  <h1>周長與面積遊戲_Hako</h1>
+  <h1>Hako</h1>
   <div id="controls">
     <input type="text" id="playerName" placeholder="請輸入暱稱">
     <select id="difficulty">
@@ -139,6 +139,10 @@
     let selectedCells = new Set(); // 儲存點擊選中的格子
     let reverseModeTargetValue = 0; // 反向模式的目標值 (面積或周長)
     let reverseModeQuestionType = ''; // 'area' 或 'perimeter'
+
+    // *** 新增：教學模式中可行周長和面積值的列表 ***
+    const possiblePerimeterValues = [4, 6, 8, 10, 12, 14, 16, 18, 20]; // 這些周長較容易在網格上組成
+    const possibleAreaValues = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; // 面積通常比較靈活，限制在小範圍
 
     // 1. 輸入答案的地方可以支援按下Enter也能輸入
     document.getElementById("answer").addEventListener("keypress", function(event) {
@@ -451,12 +455,14 @@
         selectedCells.clear(); // 清空選擇
         drawGrid(); // 重新繪製空白網格
         
-        reverseModeTargetValue = Math.floor(Math.random() * 10) + 5; // 生成5-14之間的目標值
+        // *** 修改部分：從預定義的可行值列表中選擇目標值 ***
         if (Math.random() < 0.5) {
             reverseModeQuestionType = 'area';
+            reverseModeTargetValue = possibleAreaValues[Math.floor(Math.random() * possibleAreaValues.length)];
             document.getElementById("question").textContent = `請點擊格子，組合成面積為 ${reverseModeTargetValue} cm² 的圖形。`;
         } else {
             reverseModeQuestionType = 'perimeter';
+            reverseModeTargetValue = possiblePerimeterValues[Math.floor(Math.random() * possiblePerimeterValues.length)];
             document.getElementById("question").textContent = `請點擊格子，組合成周長為 ${reverseModeTargetValue} cm 的圖形。`;
         }
         // 清除上一次的結果高亮
@@ -501,7 +507,7 @@
         selectedCells.clear();
         redrawReverseCanvas();
         // 重設問題文字到初始狀態
-        document.getElementById("question").textContent = `請點擊格子，組合成${reverseModeQuestionType === 'area' ? '面積' : '周長'}為 ${reverseModeTargetType} 的圖形。`;
+        document.getElementById("question").textContent = `請點擊格子，組合成${reverseModeQuestionType === 'area' ? '面積' : '周長'}為 ${reverseModeTargetValue} 的圖形。`; // 注意這裡變數名稱修正為 reverseModeTargetValue
     }
 
     // 初始繪製
